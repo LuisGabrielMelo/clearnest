@@ -242,4 +242,3 @@ if __name__ == "__main__":
     window = ClearNest()
     window.show()
     sys.exit(app.exec_())
-
