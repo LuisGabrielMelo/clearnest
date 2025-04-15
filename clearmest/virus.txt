@@ -1,0 +1,5 @@
+babylon
+searchprotect
+delta
+installer.exe
+unwanted_folder
