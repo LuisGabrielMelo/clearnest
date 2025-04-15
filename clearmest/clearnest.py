@@ -2,65 +2,90 @@ import os
 import shutil
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk, scrolledtext
+import psutil
+import subprocess
+from datetime import datetime
 
 class ClearNest:
     def __init__(self, root):
         self.root = root
         self.root.title("ClearNest – Escaneo y limpieza avanzada")
-        self.root.geometry("700x550")
+        self.root.geometry("950x680")
         self.root.resizable(False, False)
 
         self.suspect_paths = [
-            os.path.expandvars(r"%APPDATA%\SearchProtect"),
-            os.path.expandvars(r"%APPDATA%\Babylon"),
-            os.path.expandvars(r"%APPDATA%\Delta"),
-            os.path.expandvars(r"%PROGRAMFILES%\SearchProtect"),
-            os.path.expandvars(r"%PROGRAMFILES(X86)%\SearchProtect"),
+            os.path.expandvars(r"%APPDATA%\\SearchProtect"),
+            os.path.expandvars(r"%APPDATA%\\Babylon"),
+            os.path.expandvars(r"%APPDATA%\\Delta"),
+            os.path.expandvars(r"%PROGRAMFILES%\\SearchProtect"),
+            os.path.expandvars(r"%PROGRAMFILES(X86)%\\SearchProtect"),
             os.path.expandvars(r"%TEMP%"),
+            os.path.expandvars(r"%USERPROFILE%\\AppData\\Local\\Temp"),
         ]
 
         self.custom_paths = []
         self.virus_names = []
-
         self.detected = []
+
         self.build_ui()
+        self.update_system_info()
 
     def build_ui(self):
-        title = tk.Label(self.root, text="🛡️ ClearNest – Protección contra adware", font=("Segoe UI", 16, "bold"))
+        ttk.Style().configure("TButton", padding=6, font=("Segoe UI", 10))
+        ttk.Style().configure("Treeview.Heading", font=("Segoe UI", 10, "bold"))
+
+        title = tk.Label(self.root, text="🛡️ ClearNest – Protección contra adware", font=("Segoe UI", 18, "bold"))
         title.pack(pady=10)
 
         button_frame = tk.Frame(self.root)
         button_frame.pack(pady=5)
 
-        tk.Button(button_frame, text="📂 Agregar carpeta", command=self.add_folder).grid(row=0, column=0, padx=5)
-        tk.Button(button_frame, text="📄 Cargar virus.txt", command=self.load_virus_names).grid(row=0, column=1, padx=5)
-        tk.Button(button_frame, text="🔍 Escanear", command=self.scan).grid(row=0, column=2, padx=5)
-        self.clean_button = tk.Button(button_frame, text="🗑️ Eliminar seleccionados", command=self.clean_selected, state=tk.DISABLED)
+        ttk.Button(button_frame, text="📂 Agregar carpeta", command=self.add_folder).grid(row=0, column=0, padx=5)
+        ttk.Button(button_frame, text="📄 Cargar virus.txt", command=self.load_virus_names).grid(row=0, column=1, padx=5)
+        ttk.Button(button_frame, text="🔍 Escanear", command=self.scan).grid(row=0, column=2, padx=5)
+        self.clean_button = ttk.Button(button_frame, text="🗑️ Eliminar seleccionados", command=self.clean_selected, state=tk.DISABLED)
         self.clean_button.grid(row=0, column=3, padx=5)
+        self.clean_all_button = ttk.Button(button_frame, text="💣 Eliminar todo", command=self.clean_all, state=tk.DISABLED)
+        self.clean_all_button.grid(row=0, column=4, padx=5)
+        ttk.Button(button_frame, text="🛑 Detener virus activos", command=self.terminate_virus_processes).grid(row=0, column=5, padx=5)
+        ttk.Button(button_frame, text="🔥 Eliminar virus detectados (forzado)", command=self.force_delete_viruses).grid(row=0, column=6, padx=5)
 
-        # Tabla de resultados
         tree_frame = tk.Frame(self.root)
         tree_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
 
         self.tree = ttk.Treeview(tree_frame, columns=("path",), show="headings", height=12)
         self.tree.heading("path", text="Ruta sospechosa")
-        self.tree.column("path", width=650)
+        self.tree.column("path", width=850)
 
         tree_scroll = ttk.Scrollbar(tree_frame, orient="vertical", command=self.tree.yview)
         self.tree.configure(yscrollcommand=tree_scroll.set)
         self.tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
         tree_scroll.pack(side=tk.RIGHT, fill=tk.Y)
 
-        # Log/status
-        tk.Label(self.root, text="Estado:", font=("Segoe UI", 11, "bold")).pack()
+        action_frame = tk.Frame(self.root)
+        action_frame.pack()
+
+        ttk.Button(action_frame, text="📂 Ver en carpeta", command=self.open_in_explorer).pack(side=tk.LEFT, padx=5)
+
+        tk.Label(self.root, text="Estado del análisis:", font=("Segoe UI", 11, "bold")).pack()
         self.log_area = scrolledtext.ScrolledText(self.root, height=6, state="disabled", font=("Consolas", 9))
         self.log_area.pack(fill=tk.X, padx=10, pady=5)
 
+        self.system_info_frame = tk.Frame(self.root)
+        self.system_info_frame.pack(pady=5, fill=tk.X)
+        self.system_info_label = tk.Label(self.system_info_frame, text="", font=("Segoe UI", 10))
+        self.system_info_label.pack(side=tk.LEFT, padx=10)
+        ttk.Button(self.system_info_frame, text="🔄 Actualizar", command=self.update_system_info).pack(side=tk.RIGHT, padx=10)
+
     def log(self, msg):
+        now = datetime.now().strftime("%H:%M:%S")
+        full_msg = f"[{now}] {msg}"
         self.log_area.config(state="normal")
-        self.log_area.insert(tk.END, msg + "\n")
+        self.log_area.insert(tk.END, full_msg + "\n")
         self.log_area.see(tk.END)
         self.log_area.config(state="disabled")
+        with open("clearnest_log.txt", "a", encoding="utf-8") as f:
+            f.write(full_msg + "\n")
 
     def add_folder(self):
         folder = filedialog.askdirectory()
@@ -79,17 +104,17 @@ class ClearNest:
         self.tree.delete(*self.tree.get_children())
         self.detected.clear()
         self.clean_button.config(state=tk.DISABLED)
+        self.clean_all_button.config(state=tk.DISABLED)
 
         all_paths = self.suspect_paths + self.custom_paths
-        self.log("🔎 Escaneando...")
+        self.log("🔎 Iniciando escaneo...")
 
         for path in all_paths:
             if not os.path.exists(path):
                 continue
 
             for root_dir, dirs, files in os.walk(path):
-                items = dirs + files
-                for item in items:
+                for item in dirs + files:
                     full_path = os.path.join(root_dir, item)
                     if item.lower() in self.virus_names or any(v in full_path.lower() for v in self.virus_names):
                         self.tree.insert("", "end", values=(full_path,))
@@ -101,8 +126,9 @@ class ClearNest:
             messagebox.showinfo("ClearNest", "Todo limpio.")
         else:
             self.clean_button.config(state=tk.NORMAL)
+            self.clean_all_button.config(state=tk.NORMAL)
             messagebox.showwarning("ClearNest", f"Se encontraron {len(self.detected)} elementos sospechosos.")
-            self.log(f"⚠️ Amenazas detectadas: {len(self.detected)}")
+            self.log(f"⚠️ Total amenazas: {len(self.detected)}")
 
     def clean_selected(self):
         selected_items = self.tree.selection()
@@ -110,8 +136,7 @@ class ClearNest:
             messagebox.showinfo("ClearNest", "Selecciona al menos una ruta para eliminar.")
             return
 
-        confirm = messagebox.askyesno("Confirmar", f"¿Eliminar {len(selected_items)} elementos seleccionados?")
-        if not confirm:
+        if not messagebox.askyesno("Confirmar", f"¿Eliminar {len(selected_items)} elementos seleccionados?"):
             return
 
         eliminados = 0
@@ -126,13 +151,78 @@ class ClearNest:
                 self.log(f"[✔] Eliminado: {path}")
                 self.tree.delete(item)
             except Exception as e:
-                self.log(f"[X] Error eliminando {path}: {str(e)}")
+                self.log(f"[X] Error al eliminar {path}: {str(e)}")
 
         messagebox.showinfo("ClearNest", f"🧹 Limpieza completa. {eliminados} elementos eliminados.")
-        if self.tree.get_children():
-            self.clean_button.config(state=tk.NORMAL)
-        else:
+        if not self.tree.get_children():
             self.clean_button.config(state=tk.DISABLED)
+            self.clean_all_button.config(state=tk.DISABLED)
+
+    def clean_all(self):
+        for item in self.tree.get_children():
+            self.tree.selection_add(item)
+        self.clean_selected()
+
+    def open_in_explorer(self):
+        selected = self.tree.selection()
+        if selected:
+            path = self.tree.item(selected[0], "values")[0]
+            if os.path.exists(path):
+                subprocess.run(f'explorer /select,"{path}"')
+            else:
+                messagebox.showerror("ClearNest", "La ruta no existe.")
+
+    def terminate_virus_processes(self):
+        terminated = 0
+        for proc in psutil.process_iter(['pid', 'name', 'exe']):
+            try:
+                pname = proc.info['name'].lower() if proc.info['name'] else ""
+                pexe = proc.info['exe'].lower() if proc.info['exe'] else ""
+                if any(v in pname or v in pexe for v in self.virus_names):
+                    proc.terminate()
+                    self.log(f"[🛑] Proceso detenido: {pname} (PID {proc.pid})")
+                    terminated += 1
+            except Exception as e:
+                self.log(f"[X] Error al detener proceso: {e}")
+        if terminated:
+            messagebox.showinfo("ClearNest", f"{terminated} procesos sospechosos fueron detenidos.")
+        else:
+            messagebox.showinfo("ClearNest", "No se encontraron procesos sospechosos activos.")
+
+    def force_delete_viruses(self):
+        eliminados = 0
+        for path in self.detected:
+            try:
+                for proc in psutil.process_iter(['pid', 'open_files']):
+                    if any(f.path.lower() == path.lower() for f in proc.info['open_files'] or []):
+                        proc.kill()
+                        self.log(f"[🛑] Proceso que usaba {path} finalizado: PID {proc.pid}")
+
+                if os.path.isfile(path):
+                    os.remove(path)
+                elif os.path.isdir(path):
+                    shutil.rmtree(path)
+                eliminados += 1
+                self.log(f"[🔥] Eliminado forzadamente: {path}")
+            except Exception as e:
+                self.log(f"[X] Error al eliminar {path}: {e}")
+        if eliminados:
+            messagebox.showinfo("ClearNest", f"{eliminados} elementos fueron eliminados forzadamente.")
+        else:
+            messagebox.showinfo("ClearNest", "No se pudo eliminar ningún archivo.")
+
+    def update_system_info(self):
+        try:
+            cpu_percent = psutil.cpu_percent(interval=1)
+            memory = psutil.virtual_memory()
+            disk = psutil.disk_usage('/')
+            info = (
+                f"CPU: {cpu_percent}% | RAM: {memory.available // (1024**2)} MB libres de {memory.total // (1024**2)} MB | "
+                f"Disco: {disk.free // (1024**3)} GB libres"
+            )
+            self.system_info_label.config(text=info)
+        except Exception as e:
+            self.system_info_label.config(text=f"Error al obtener información: {e}")
 
 if __name__ == "__main__":
     root = tk.Tk()
