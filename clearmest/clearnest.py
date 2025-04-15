@@ -10,17 +10,24 @@ class ClearNest:
     def __init__(self, root):
         self.root = root
         self.root.title("ClearNest – Escaneo y limpieza avanzada")
-        self.root.geometry("950x680")
+
+        # Tamaño fijo o adaptable según pantalla
+        self.root.geometry("900x750")  # Tamaño fijo recomendado
+        # O para tamaño adaptable:
+        # screen_width = self.root.winfo_screenwidth()
+        # screen_height = self.root.winfo_screenheight()
+        # self.root.geometry(f"{int(screen_width * 0.8)}x{int(screen_height * 0.85)}")
+
         self.root.resizable(False, False)
 
         self.suspect_paths = [
-            os.path.expandvars(r"%APPDATA%\\SearchProtect"),
-            os.path.expandvars(r"%APPDATA%\\Babylon"),
-            os.path.expandvars(r"%APPDATA%\\Delta"),
-            os.path.expandvars(r"%PROGRAMFILES%\\SearchProtect"),
-            os.path.expandvars(r"%PROGRAMFILES(X86)%\\SearchProtect"),
+            os.path.expandvars(r"%APPDATA%\SearchProtect"),
+            os.path.expandvars(r"%APPDATA%\Babylon"),
+            os.path.expandvars(r"%APPDATA%\Delta"),
+            os.path.expandvars(r"%PROGRAMFILES%\SearchProtect"),
+            os.path.expandvars(r"%PROGRAMFILES(X86)%\SearchProtect"),
             os.path.expandvars(r"%TEMP%"),
-            os.path.expandvars(r"%USERPROFILE%\\AppData\\Local\\Temp"),
+            os.path.expandvars(r"%USERPROFILE%\AppData\Local\Temp"),
         ]
 
         self.custom_paths = []
@@ -47,15 +54,15 @@ class ClearNest:
         self.clean_button.grid(row=0, column=3, padx=5)
         self.clean_all_button = ttk.Button(button_frame, text="💣 Eliminar todo", command=self.clean_all, state=tk.DISABLED)
         self.clean_all_button.grid(row=0, column=4, padx=5)
-        ttk.Button(button_frame, text="🛑 Detener virus activos", command=self.terminate_virus_processes).grid(row=0, column=5, padx=5)
-        ttk.Button(button_frame, text="🔥 Eliminar virus detectados (forzado)", command=self.force_delete_viruses).grid(row=0, column=6, padx=5)
+        ttk.Button(button_frame, text="⛔ Detener virus activos", command=self.kill_virus_processes).grid(row=0, column=5, padx=5)
+        ttk.Button(button_frame, text="🚫 Eliminar procesos maliciosos", command=self.remove_virus_processes).grid(row=0, column=6, padx=5)
 
         tree_frame = tk.Frame(self.root)
         tree_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
 
-        self.tree = ttk.Treeview(tree_frame, columns=("path",), show="headings", height=12)
+        self.tree = ttk.Treeview(tree_frame, columns=("path",), show="headings", height=18)
         self.tree.heading("path", text="Ruta sospechosa")
-        self.tree.column("path", width=850)
+        self.tree.column("path", width=750)
 
         tree_scroll = ttk.Scrollbar(tree_frame, orient="vertical", command=self.tree.yview)
         self.tree.configure(yscrollcommand=tree_scroll.set)
@@ -65,7 +72,7 @@ class ClearNest:
         action_frame = tk.Frame(self.root)
         action_frame.pack()
 
-        ttk.Button(action_frame, text="📂 Ver en carpeta", command=self.open_in_explorer).pack(side=tk.LEFT, padx=5)
+        ttk.Button(action_frame, text="🗂️ Ver en carpeta", command=self.open_in_explorer).pack(side=tk.LEFT, padx=5)
 
         tk.Label(self.root, text="Estado del análisis:", font=("Segoe UI", 11, "bold")).pack()
         self.log_area = scrolledtext.ScrolledText(self.root, height=6, state="disabled", font=("Consolas", 9))
@@ -84,6 +91,7 @@ class ClearNest:
         self.log_area.insert(tk.END, full_msg + "\n")
         self.log_area.see(tk.END)
         self.log_area.config(state="disabled")
+
         with open("clearnest_log.txt", "a", encoding="utf-8") as f:
             f.write(full_msg + "\n")
 
@@ -91,7 +99,7 @@ class ClearNest:
         folder = filedialog.askdirectory()
         if folder:
             self.custom_paths.append(folder)
-            self.log(f"[+] Carpeta agregada para escanear: {folder}")
+            self.log(f"[+] Carpeta agregada: {folder}")
 
     def load_virus_names(self):
         filepath = filedialog.askopenfilename(filetypes=[("Archivo de texto", "*.txt")])
@@ -133,10 +141,10 @@ class ClearNest:
     def clean_selected(self):
         selected_items = self.tree.selection()
         if not selected_items:
-            messagebox.showinfo("ClearNest", "Selecciona al menos una ruta para eliminar.")
+            messagebox.showinfo("ClearNest", "Selecciona al menos una ruta.")
             return
 
-        if not messagebox.askyesno("Confirmar", f"¿Eliminar {len(selected_items)} elementos seleccionados?"):
+        if not messagebox.askyesno("Confirmar", f"¿Eliminar {len(selected_items)} elementos?"):
             return
 
         eliminados = 0
@@ -151,9 +159,9 @@ class ClearNest:
                 self.log(f"[✔] Eliminado: {path}")
                 self.tree.delete(item)
             except Exception as e:
-                self.log(f"[X] Error al eliminar {path}: {str(e)}")
+                self.log(f"[X] Error al eliminar {path}: {e}")
 
-        messagebox.showinfo("ClearNest", f"🧹 Limpieza completa. {eliminados} elementos eliminados.")
+        messagebox.showinfo("ClearNest", f"🧹 {eliminados} elementos eliminados.")
         if not self.tree.get_children():
             self.clean_button.config(state=tk.DISABLED)
             self.clean_all_button.config(state=tk.DISABLED)
@@ -172,45 +180,6 @@ class ClearNest:
             else:
                 messagebox.showerror("ClearNest", "La ruta no existe.")
 
-    def terminate_virus_processes(self):
-        terminated = 0
-        for proc in psutil.process_iter(['pid', 'name', 'exe']):
-            try:
-                pname = proc.info['name'].lower() if proc.info['name'] else ""
-                pexe = proc.info['exe'].lower() if proc.info['exe'] else ""
-                if any(v in pname or v in pexe for v in self.virus_names):
-                    proc.terminate()
-                    self.log(f"[🛑] Proceso detenido: {pname} (PID {proc.pid})")
-                    terminated += 1
-            except Exception as e:
-                self.log(f"[X] Error al detener proceso: {e}")
-        if terminated:
-            messagebox.showinfo("ClearNest", f"{terminated} procesos sospechosos fueron detenidos.")
-        else:
-            messagebox.showinfo("ClearNest", "No se encontraron procesos sospechosos activos.")
-
-    def force_delete_viruses(self):
-        eliminados = 0
-        for path in self.detected:
-            try:
-                for proc in psutil.process_iter(['pid', 'open_files']):
-                    if any(f.path.lower() == path.lower() for f in proc.info['open_files'] or []):
-                        proc.kill()
-                        self.log(f"[🛑] Proceso que usaba {path} finalizado: PID {proc.pid}")
-
-                if os.path.isfile(path):
-                    os.remove(path)
-                elif os.path.isdir(path):
-                    shutil.rmtree(path)
-                eliminados += 1
-                self.log(f"[🔥] Eliminado forzadamente: {path}")
-            except Exception as e:
-                self.log(f"[X] Error al eliminar {path}: {e}")
-        if eliminados:
-            messagebox.showinfo("ClearNest", f"{eliminados} elementos fueron eliminados forzadamente.")
-        else:
-            messagebox.showinfo("ClearNest", "No se pudo eliminar ningún archivo.")
-
     def update_system_info(self):
         try:
             cpu_percent = psutil.cpu_percent(interval=1)
@@ -222,9 +191,40 @@ class ClearNest:
             )
             self.system_info_label.config(text=info)
         except Exception as e:
-            self.system_info_label.config(text=f"Error al obtener información: {e}")
+            self.system_info_label.config(text=f"Error al obtener info: {e}")
+
+    def kill_virus_processes(self):
+        killed = 0
+        for proc in psutil.process_iter(['pid', 'name']):
+            try:
+                name = proc.info['name'].lower()
+                if any(v in name for v in self.virus_names):
+                    proc.kill()
+                    killed += 1
+                    self.log(f"[✖] Proceso detenido: {name}")
+            except Exception as e:
+                self.log(f"[X] Error al detener proceso: {e}")
+        messagebox.showinfo("ClearNest", f"⛔ Se detuvieron {killed} procesos.")
+
+    def remove_virus_processes(self):
+        confirm = messagebox.askyesno("Confirmar", "¿Eliminar archivos de procesos maliciosos encontrados?")
+        if not confirm:
+            return
+        removed = 0
+        for proc in psutil.process_iter(['exe']):
+            try:
+                exe = proc.info['exe']
+                if exe and any(v in exe.lower() for v in self.virus_names):
+                    proc.kill()
+                    os.remove(exe)
+                    removed += 1
+                    self.log(f"[🔥] Eliminado proceso y archivo: {exe}")
+            except Exception as e:
+                self.log(f"[X] No se pudo eliminar: {e}")
+        messagebox.showinfo("ClearNest", f"🔥 Se eliminaron {removed} procesos maliciosos.")
 
 if __name__ == "__main__":
     root = tk.Tk()
     app = ClearNest(root)
     root.mainloop()
+
